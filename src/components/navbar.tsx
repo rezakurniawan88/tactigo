@@ -2,7 +2,7 @@
 
 import { LucideLoader2, LucideLogOut, LucidePlus } from "lucide-react";
 import SearchBar from "./search-bar";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Button } from "./ui/button";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
@@ -62,10 +62,6 @@ export default function Navbar({ session }: { session: Session | null }) {
                             <DropdownMenuLabel>{session?.user?.name || "John Doe"}</DropdownMenuLabel>
                             <p className="text-xs text-gray-400 px-2 -mt-2 mb-3">{session?.user?.email || "john@example.com"}</p>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem>Profile</DropdownMenuItem>
-                            <DropdownMenuItem>Billing</DropdownMenuItem>
-                            <DropdownMenuItem>Team</DropdownMenuItem>
-                            <DropdownMenuItem>Subscription</DropdownMenuItem>
                             <AlertDialog>
                                 <AlertDialogTrigger asChild>
                                     <button className="w-full flex items-center gap-2 text-sm p-2 text-red-600 hover:text-red-800 transition-colors rounded-md hover:bg-gray-100">

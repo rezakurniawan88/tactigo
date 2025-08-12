@@ -1020,17 +1020,20 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
                         <div className="space-y-4">
                             <h1 className="font-bold">Board Settings</h1>
                             <div className="space-y-4">
-                                <Select value={orientation} onValueChange={handleOrientationChange}>
-                                    <SelectTrigger className="w-full">
-                                        <SelectValue placeholder="Orientation" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectGroup>
-                                            <SelectItem value="horizontal">Horizontal</SelectItem>
-                                            <SelectItem value="vertical">Vertical</SelectItem>
-                                        </SelectGroup>
-                                    </SelectContent>
-                                </Select>
+                                <div className="space-y-2">
+                                    <h1 className="text-sm text-gray-800 font-semibold">Orientations</h1>
+                                    <Select value={orientation} onValueChange={handleOrientationChange}>
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Orientation" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectGroup>
+                                                <SelectItem value="horizontal">Horizontal</SelectItem>
+                                                <SelectItem value="vertical">Vertical</SelectItem>
+                                            </SelectGroup>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                                 <div className="space-y-2">
                                     <h1 className="text-sm text-gray-800 font-semibold">Formations</h1>
                                     <Select value={selectedFormation} onValueChange={handleFormationChange}>
