@@ -13,6 +13,19 @@ import ModalChangeTitle from "./modal/modal-change-title";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "./ui/alert-dialog";
 import { toast } from "sonner";
 
+type TacticType = {
+    id: string;
+    title: string | undefined;
+    description: string;
+    boardType: string;
+    boardData: JSON;
+    isPublic: boolean,
+    isArchived: boolean,
+    createdAt: string;
+    updatedAt: string;
+    userId: string;
+}
+
 export default function SearchPageTacticList() {
     const session = useSession();
     const [layoutView, setLayoutView] = useState<"grid" | "list">("grid");
@@ -32,10 +45,9 @@ export default function SearchPageTacticList() {
         enabled: !!session?.data?.user?.id
     })
 
-    const dataTacticsFiltered = dataTactics?.filter((data) =>
-        data?.title?.toLowerCase().includes(searchValue?.toLowerCase())
+    const dataTacticsFiltered = dataTactics?.filter((data: TacticType) =>
+        (data?.title ?? "").toLowerCase().includes((searchValue ?? "").toLowerCase())
     ) || [];
-    console.log("filtered", dataTacticsFiltered);
 
     const { mutate: handleDeleteTactic, isPending: deleteTacticIsLoading } = useMutation({
         mutationKey: ['delete-tactic'],
@@ -89,7 +101,7 @@ export default function SearchPageTacticList() {
                     </>
                 ) : dataTacticsFiltered.length <= 0 ? (
                     <h1 className="text-lg font-semibold text-slate-500/70 mt-10">Tactics Not Found</h1>
-                ) : dataTacticsFiltered?.map((tactic) => (
+                ) : dataTacticsFiltered?.map((tactic: TacticType) => (
                     <div key={tactic.id} className="relative">
                         <Link href={`/tactic/${tactic.id}`}>
                             <div className="bg-white rounded-xl overflow-hidden hover:shadow-xl transition-all hover:shadow-slate-200 border border-slate-200">

@@ -21,7 +21,10 @@ export default function ModalCreateProject({ layoutView }: { layoutView: string 
     const session = useSession();
     const router = useRouter();
     const { modalCreateTacticIsOpen, setModalCreateTacticIsOpen } = useModalStore((state) => state);
-    console.log("Session:", session);
+    const boardCategory = [
+        { id: "football", name: "Football" },
+        // {id: "basketball", name: "Basketball"}
+    ];
 
     const formSchema = z.object({
         title: z.string().min(2, "Title must be at least 2 characters long"),
@@ -49,7 +52,6 @@ export default function ModalCreateProject({ layoutView }: { layoutView: string 
                     "uiStates": {
                         "showBall": false,
                         "showGrid": false,
-                        "orientation": "horizontal",
                         "showNumbers": false,
                         "showOpponents": false,
                         "selectedFormation": "4-3-3"
@@ -61,7 +63,6 @@ export default function ModalCreateProject({ layoutView }: { layoutView: string 
             return response?.data?.data;
         },
         onSuccess: (data) => {
-            console.log("Tactic created successfully");
             form.reset();
             toast("Tactic created successfully!");
             router.push(`/tactic/${data?.id}`);
@@ -75,7 +76,6 @@ export default function ModalCreateProject({ layoutView }: { layoutView: string 
 
     function onSubmit(values: z.infer<typeof formSchema>) {
         handleCreateTactic(values);
-        console.log(values);
     }
 
     return (
@@ -152,7 +152,7 @@ export default function ModalCreateProject({ layoutView }: { layoutView: string 
                                                 <SelectContent>
                                                     <SelectGroup>
                                                         <SelectLabel>Board</SelectLabel>
-                                                        {[{ id: "football", name: "Football" }, { id: "basketball", name: "Basketball" }].map((board, index) => (
+                                                        {boardCategory.map((board, index) => (
                                                             <SelectItem key={index} value={board.id}>{board.name}</SelectItem>
                                                         ))}
                                                     </SelectGroup>

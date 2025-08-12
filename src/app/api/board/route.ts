@@ -2,12 +2,8 @@ import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
-    // const data = await req.json();
-    // console.log("dataPost", data);
-    
     try {
         const { title, description, boardType, boardData, userId } = await req.json();
-        console.log("title", title);
         
         if(!userId) {
             return NextResponse.json({ message: "User ID is required"}, { status: 400 });

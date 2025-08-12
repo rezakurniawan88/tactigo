@@ -18,6 +18,11 @@ import { toast } from "sonner";
 import Link from "next/link";
 import ModalChangeTitle from "@/components/modal/modal-change-title";
 import { useCanvasSize } from "@/hooks/useCanvasSize";
+import { KonvaEventObject } from "konva/lib/Node";
+import Konva from "konva";
+
+type FormationType = keyof typeof dataFormations;
+type OrientationType = "horizontal" | "vertical";
 
 interface Player {
     id: number;
@@ -41,6 +46,13 @@ interface TextElement {
     draggable: boolean;
 }
 
+interface TextPosition {
+    x: number;
+    y: number;
+    width?: number;
+    rotation?: number;
+}
+
 interface CanvasState {
     players: Player[];
     opponents: Player[];
@@ -49,15 +61,111 @@ interface CanvasState {
     ballPos: { x: number; y: number };
 }
 
+interface SavedChild {
+    className: string;
+    attrs?: {
+        fill?: string;
+        x?: number;
+        y?: number;
+        points?: number[];
+        stroke?: string;
+        strokeWidth?: number;
+        id?: string;
+        text?: string;
+        fontSize?: number;
+        width?: number;
+        rotation?: number;
+        offsetX?: number;
+        offsetY?: number;
+    };
+    children?: SavedChild[];
+}
+
+interface SavedLayer {
+    className: string;
+    children?: SavedChild[];
+}
+
+interface BoardData {
+    id: string;
+    title: string;
+    boardData?: {
+        stageData: {
+            children: Array<{
+                className: string;
+                children: Array<{
+                    className: string;
+                    attrs?: {
+                        fill?: string;
+                        x?: number;
+                        y?: number;
+                        points?: number[];
+                        stroke?: string;
+                        strokeWidth?: number;
+                        id?: string;
+                        text?: string;
+                        fontSize?: number;
+                        width?: number;
+                        rotation?: number;
+                        offsetX?: number;
+                        offsetY?: number;
+                        image?: HTMLImageElement;
+                    };
+                    children?: Array<{
+                        className: string;
+                        attrs?: {
+                            fill?: string;
+                            x?: number;
+                            y?: number;
+                            points?: number[];
+                            stroke?: string;
+                            strokeWidth?: number;
+                            id?: string;
+                            text?: string;
+                            fontSize?: number;
+                            width?: number;
+                            rotation?: number;
+                            offsetX?: number;
+                            offsetY?: number;
+                            image?: HTMLImageElement;
+                        };
+                    }>;
+                }>;
+            }>;
+        };
+        uiStates: {
+            showGrid: boolean;
+            showNumbers: boolean;
+            showOpponents: boolean;
+            showBall: boolean;
+            selectedFormation: FormationType;
+            orientation?: OrientationType;
+        };
+    };
+}
+
+interface KonvaPointerPosition {
+    x: number;
+    y: number;
+}
+
+interface KonvaStage extends Konva.Stage {
+    getPointerPosition(): KonvaPointerPosition | null;
+}
+
 export default function BoardPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
-    const { data: dataBoard, isLoading: fetchDataBoardIsLoading, refetch: refetchDataBoard } = useFetchDataBoard(id);
-    const stageRef = useRef<any>(null);
-    const containerRef = useRef<HTMLDivElement>(null);
+    const { data: dataBoard, isLoading: fetchDataBoardIsLoading, refetch: refetchDataBoard } = useFetchDataBoard(id) as {
+        data: BoardData | undefined;
+        isLoading: boolean;
+        refetch: () => void;
+    };;
+    const stageRef = useRef<Konva.Stage>(null);
+    const containerRef = useRef<HTMLDivElement | null>(null);
     const [players, setPlayers] = useState<Player[]>([]);
     const [opponents, setOpponents] = useState<Player[]>([]);
     const [showOpponents, setShowOpponents] = useState<boolean>(false);
-    const [selectedFormation, setSelectedFormation] = useState<keyof typeof dataFormations>("4-3-3");
+    const [selectedFormation, setSelectedFormation] = useState<FormationType>("4-3-3");
     const [isCustomFormation, setIsCustomFormation] = useState<boolean>(false);
     const [showBall, setShowBall] = useState<boolean>(false);
     const [showGrid, setShowGrid] = useState<boolean>(false);
@@ -72,18 +180,15 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
     const [texts, setTexts] = useState<TextElement[]>([]);
     const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
     const [isEditing, setIsEditing] = useState<boolean>(false);
-    const textRef = useRef<any>(null);
-    const trRef = useRef<any>(null);
     const [selectedColor, setSelectedColor] = useState<string>("black");
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [selectedShape, setSelectedShape] = useState<'arrow' | 'line' | 'text' | null>(null);
     const [history, setHistory] = useState<CanvasState[]>([]);
     const [currentStateIndex, setCurrentStateIndex] = useState<number>(-1);
-    const [orientation, setOrientation] = useState<"horizontal" | "vertical">("horizontal");
+    const [orientation, setOrientation] = useState<OrientationType>("horizontal");
     const { width, height, scale } = useCanvasSize(containerRef, orientation);
     const [sidePanelCollapsed, setSidePanelCollapsed] = useState<boolean>(false);
-    console.log("Data Board", dataBoard);
-    console.log("typeof", typeof dataBoard?.boardData);
+    const [dragOffset, setDragOffset] = useState<{ [key: string]: { x: number, y: number } }>({});
 
     useEffect(() => {
         const img = new window.Image();
@@ -103,6 +208,10 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
                         const playerLayer = uiStates.showGrid ? layers[3]?.children || [] : layers[2]?.children || [];
                         const drawingLayer = uiStates.showGrid ? layers[4]?.children || [] : layers[3]?.children || [];
                         const textLayer = layers[layers.length - 1]?.children || [];
+                        const ballLayer = stageData?.children?.find(
+                            (layer: SavedLayer) => layer.className === "Layer" &&
+                                layer.children?.some((child: SavedChild) => child.className === "Image")
+                        );
 
                         if (uiStates) {
                             setShowGrid(uiStates.showGrid);
@@ -115,8 +224,6 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
                         }
 
                         const orientationFromData = uiStates?.orientation || 'horizontal';
-                        console.log("or", orientationFromData);
-
 
                         const toHorizontal = (x: number, y: number) => ({
                             x: y,
@@ -124,13 +231,13 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
                         });
 
                         const loadedPlayers = playerLayer
-                            ?.filter((group: any) =>
+                            ?.filter((group: SavedChild) =>
                                 group.className === "Group" &&
                                 group.children?.[0]?.attrs?.fill === "#2196F3"
                             )
-                            ?.map((group: any, index: number) => {
-                                let x = group.attrs.x;
-                                let y = group.attrs.y;
+                            ?.map((group: SavedChild, index: number) => {
+                                let x = group.attrs?.x || 0;
+                                let y = group.attrs?.y || 0;
                                 if (orientationFromData === "vertical") {
                                     const pos = toHorizontal(x, y);
                                     x = pos.x;
@@ -148,13 +255,13 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
                             }) || [];
 
                         const loadedOpponents = playerLayer
-                            .filter((group: any) =>
+                            .filter((group: SavedChild) =>
                                 group.className === "Group" &&
                                 group.children?.[0]?.attrs?.fill === "#F44336"
                             )
-                            .map((group: any, index: number) => {
-                                let x = group.attrs.x;
-                                let y = group.attrs.y;
+                            .map((group: SavedChild, index: number) => {
+                                let x = group.attrs?.x || 0;
+                                let y = group.attrs?.y || 0;
                                 if (orientationFromData === "vertical") {
                                     const pos = toHorizontal(x, y);
                                     x = pos.x;
@@ -171,36 +278,63 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
                                 };
                             });
 
-
-                        const hasGrid = gridLayer.some((item: any) =>
+                        const hasGrid = gridLayer.some((item: SavedChild) =>
                             item.className === "Line" &&
                             item.attrs?.stroke === "rgba(255, 255, 255, 0.3)");
 
                         const loadedLines = drawingLayer
-                            .filter((line: any) =>
+                            .filter((line: SavedChild) =>
                                 line.className === "Line" ||
                                 line.className === "Arrow"
                             )
-                            .map((line: any) => ({
-                                points: line.attrs.points,
-                                color: line.attrs.stroke,
-                                strokeWidth: line.attrs.strokeWidth,
-                                drawingMode: line.className.toLowerCase()
-                            }));
+                            .map((line: SavedChild) => {
+                                let points = line.attrs?.points || [];
+
+                                if (orientationFromData === "vertical") {
+                                    points = rotateLinePoints(points, width, height);
+                                }
+                                return {
+                                    points,
+                                    color: line.attrs?.stroke || "black",
+                                    strokeWidth: line.attrs?.strokeWidth || 2,
+                                    drawingMode: line.className.toLowerCase()
+                                }
+                            });
 
                         const loadedTexts = textLayer
-                            .filter((text: any) => text.className === "Text")
-                            .map((text: any) => ({
-                                id: text.attrs.id || Date.now().toString(),
-                                x: text.attrs.x,
-                                y: text.attrs.y,
-                                text: text.attrs.text,
-                                fontSize: text.attrs.fontSize || 14,
-                                width: text.attrs.width || 200,
-                                rotation: text.attrs.rotation || 0,
-                                isEditing: false,
-                                draggable: true
-                            }));
+                            .filter((text: SavedChild) => text.className === "Text")
+                            .map((text: SavedChild) => {
+                                let x = text.attrs?.x || 0;
+                                let y = text.attrs?.y || 0;
+
+                                if (orientationFromData === "vertical") {
+                                    const pos = rotateTextCoordinates(x, y, width, height);
+                                    x = pos.x;
+                                    y = pos.y;
+                                }
+                                return {
+                                    id: text.attrs?.id || Date.now().toString(),
+                                    x,
+                                    y,
+                                    text: text.attrs?.text || "",
+                                    fontSize: text.attrs?.fontSize || 14,
+                                    width: text.attrs?.width || 200,
+                                    rotation: text.attrs?.rotation || 0,
+                                    isEditing: false,
+                                    draggable: true
+                                }
+                            });
+
+                        const ballData = ballLayer?.children?.find(
+                            (child: SavedChild) => child.className === "Image"
+                        );
+
+                        if (ballData?.attrs && typeof ballData.attrs.x === 'number' && typeof ballData.attrs.y === 'number') {
+                            setBallPos({
+                                x: ballData?.attrs?.x + (ballData.attrs.offsetX || 0),
+                                y: ballData?.attrs?.y + (ballData.attrs.offsetY || 0)
+                            });
+                        }
 
                         if (loadedPlayers.length > 0) {
                             setLines(loadedLines);
@@ -209,10 +343,10 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
                             setOpponents(loadedOpponents);
                             setShowGrid(hasGrid);
 
-                            setShowNumbers(playerLayer.some((group: any) =>
-                                group.children?.some((child: any) => child.className === "Text")
+                            setShowNumbers(playerLayer.some((group: SavedChild) =>
+                                group.children?.some((child: SavedChild) => child.className === "Text")
                             ));
-                            setShowBall(playerLayer.some((group: any) =>
+                            setShowBall(playerLayer.some((group: SavedChild) =>
                                 group.className === "Image"
                             ));
                             return true;
@@ -231,12 +365,14 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
         };
 
         loadSavedFormation();
-
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [dataBoard]);
 
     const loadDefaultFormation = () => {
-        const formation = formationPositions[selectedFormation]?.[orientation] || formationPositions[selectedFormation]?.horizontal || [];
-        const initialPlayers = formation.map((pos, i) => {
+        if (selectedFormation === "custom") return;
+        const formation = formationPositions[selectedFormation as keyof typeof formationPositions];
+        if (!formation) return;
+        const initialPlayers = formation.map((pos: { left: number, top: number }, i: number) => {
             const { x, y } = rotateCoordinates(pos.left, pos.top);
             return {
                 id: i,
@@ -260,18 +396,18 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
     useEffect(() => {
         if (selectedFormation === null || selectedFormation === "custom") return;
 
-        const formation = formationPositions[selectedFormation]?.[orientation] || formationPositions[selectedFormation]?.horizontal || [];
-        if (!formation || opponents.length === 0) return;
+        const formation = formationPositions[selectedFormation] || [];
+        if (!formation) return;
+
         const initialPlayers = formation.map((pos, i) => {
-            const { x, y } = rotateCoordinates(pos.left, pos.top);
             return {
                 id: i,
-                x,
-                y,
+                x: pos.left,
+                y: pos.top,
                 color: "#2196F3",
                 number: i + 1,
-                initialX: x,
-                initialY: y
+                initialX: pos.left,
+                initialY: pos.top
             };
         });
         setPlayers(initialPlayers);
@@ -280,7 +416,7 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
 
     useEffect(() => {
         if (showOpponents && opponents.length === 0) {
-            setOpponents(defaultOpponents[orientation].map(o => ({ ...o })));
+            setOpponents(defaultOpponents.map(o => ({ ...o })));
         }
         if (!showOpponents) {
             setOpponents([]);
@@ -292,34 +428,83 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
         if (opponents && opponents.length > 0) {
             setOpponents(opponents.map(o => ({ ...o })));
         } else {
-            setOpponents(defaultOpponents[orientation].map(o => ({ ...o })));
+            setOpponents(defaultOpponents.map(o => ({ ...o })));
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [orientation]);
 
     const rotateCoordinates = (x: number, y: number) => {
         if (orientation === "vertical") {
-            return { x: y, y: height - x };
+            const horizontalWidth = 900;
+            const horizontalHeight = 480;
+
+            return {
+                x: (y / horizontalHeight) * width,
+                y: ((horizontalWidth - x) / horizontalWidth) * height
+            };
         }
         return { x, y };
     };
 
-    const handleDragPlayer = (e, id: number) => {
-        let { x, y } = e.target.position();
+    const rotateTextCoordinates = (x: number, y: number, width: number, height: number) => {
         if (orientation === "vertical") {
-            [x, y] = [height - y, x];
+            return {
+                x: (y / 480) * width,
+                y: ((900 - x) / 900) * height
+            };
         }
+        return { x, y };
+    };
+
+    const rotateLinePoints = (points: number[], width: number, height: number) => {
+        if (orientation === "vertical") {
+            const rotatedPoints = [];
+            for (let i = 0; i < points.length; i += 2) {
+                const x = points[i];
+                const y = points[i + 1];
+                const rotatedX = (y / 480) * width;
+                const rotatedY = ((900 - x) / 900) * height;
+                rotatedPoints.push(rotatedX, rotatedY);
+            }
+            return rotatedPoints;
+        }
+        return points;
+    };
+
+    const convertDragCoordinates = (x: number, y: number) => {
+        if (orientation === "vertical") {
+            return {
+                x: ((height - y) / height) * 900,
+                y: (x / width) * 480
+            };
+        }
+        return { x, y };
+    };
+
+    const handleDragPlayer = (e: KonvaEventObject<DragEvent>, id: number) => {
+        let x = e.target.x();
+        let y = e.target.y();
+
+        if (orientation === "vertical") {
+            const logicalX = ((height - y) / height) * 900;
+            const logicalY = (x / width) * 480;
+            x = logicalX;
+            y = logicalY;
+        }
+
         const newPlayers = players.map(player =>
             player.id === id
                 ? { ...player, x, y }
                 : player
         );
-        setPlayers(newPlayers);
 
+        setPlayers(newPlayers);
+        const formationData = formationPositions[selectedFormation as keyof typeof formationPositions];
         const hasCustomPositions =
             selectedFormation !== "custom" &&
-            Array.isArray(formationPositions[selectedFormation]) &&
+            formationData &&
             newPlayers.some((player, index) => {
-                const originalPos = formationPositions[selectedFormation][index];
+                const originalPos = formationData[index];
                 if (!originalPos) return false;
                 return Math.abs(player.x - originalPos.left) > 5 ||
                     Math.abs(player.y - originalPos.top) > 5;
@@ -339,14 +524,25 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
         });
     };
 
-    const handleDragOpponent = (e: any, id: number) => {
+    const handleDragOpponent = (e: KonvaEventObject<DragEvent>, id: number) => {
+        let x = e.target.x();
+        let y = e.target.y();
+
+        if (orientation === "vertical") {
+            const logicalX = ((height - y) / height) * 900;
+            const logicalY = (x / width) * 480;
+            x = logicalX;
+            y = logicalY;
+        }
+
         const newOpponents = opponents.map(opponent =>
             opponent.id === id ? {
                 ...opponent,
-                x: e.target.x(),
-                y: e.target.y()
+                x,
+                y
             } : opponent
         );
+
         setOpponents(newOpponents);
     };
 
@@ -360,6 +556,7 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
     };
 
     const renderField = () => {
+        const fieldScale = scale;
         const center = { x: 450, y: 240 };
         const penaltySpotLeft = { x: 90, y: 235 };
         const penaltySpotRight = { x: 800, y: 235 };
@@ -391,21 +588,21 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
             <>
                 {/* Garis tengah */}
                 {orientation === 'horizontal' ? (
-                    <Line points={[450, 0, 450, 480]} stroke="white" strokeWidth={2 * scale} />
+                    <Line points={[width / 2, 0, width / 2, height]} stroke="white" strokeWidth={2 * fieldScale} />
                 ) : (
-                    <Line points={[0, 450, 480, 450]} stroke="white" strokeWidth={2 * scale} />
+                    <Line points={[0, height / 2, width, height / 2]} stroke="white" strokeWidth={2 * fieldScale} />
                 )}
 
                 {/* Lingkaran tengah */}
                 {renderElement(
-                    <Circle radius={80} stroke="white" strokeWidth={2 * scale} />,
+                    <Circle radius={80 * fieldScale} stroke="white" strokeWidth={2 * fieldScale} />,
                     center.x,
                     center.y
                 )}
 
                 {/* Titik tengah */}
                 {renderElement(
-                    <Circle radius={5} stroke="white" strokeWidth={2 * scale} fill="white" />,
+                    <Circle radius={5 * fieldScale} stroke="white" strokeWidth={2 * fieldScale} fill="white" />,
                     center.x,
                     center.y
                 )}
@@ -413,37 +610,37 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
                 {/* Kotak penalti besar */}
                 {orientation === 'horizontal' ? (
                     <>
-                        <Rect x={0} y={120} width={120} height={240} stroke="white" strokeWidth={2 * scale} />
-                        <Rect x={780} y={120} width={120} height={240} stroke="white" strokeWidth={2 * scale} />
+                        <Rect x={0} y={height * 0.25} width={width * 0.133} height={height * 0.5} stroke="white" strokeWidth={2 * fieldScale} />
+                        <Rect x={width * 0.867} y={height * 0.25} width={width * 0.133} height={height * 0.5} stroke="white" strokeWidth={2 * fieldScale} />
                     </>
                 ) : (
                     <>
-                        <Rect x={120} y={0} width={240} height={120} stroke="white" strokeWidth={2 * scale} />
-                        <Rect x={120} y={780} width={240} height={120} stroke="white" strokeWidth={2 * scale} />
+                        <Rect x={width * 0.25} y={0} width={width * 0.5} height={height * 0.133} stroke="white" strokeWidth={2 * fieldScale} />
+                        <Rect x={width * 0.25} y={height * 0.867} width={width * 0.5} height={height * 0.133} stroke="white" strokeWidth={2 * fieldScale} />
                     </>
                 )}
 
                 {/* Kotak gawang (goal area) */}
                 {orientation === 'horizontal' ? (
                     <>
-                        <Rect x={0} y={180} width={50} height={120} stroke="white" strokeWidth={2 * scale} />
-                        <Rect x={850} y={180} width={50} height={120} stroke="white" strokeWidth={2 * scale} />
+                        <Rect x={0} y={height * 0.375} width={width * 0.056} height={height * 0.25} stroke="white" strokeWidth={2 * fieldScale} />
+                        <Rect x={width * 0.944} y={height * 0.375} width={width * 0.056} height={height * 0.25} stroke="white" strokeWidth={2 * fieldScale} />
                     </>
                 ) : (
                     <>
-                        <Rect x={180} y={0} width={120} height={50} stroke="white" strokeWidth={2 * scale} />
-                        <Rect x={180} y={850} width={120} height={50} stroke="white" strokeWidth={2 * scale} />
+                        <Rect x={width * 0.375} y={0} width={width * 0.25} height={height * 0.056} stroke="white" strokeWidth={2 * fieldScale} />
+                        <Rect x={width * 0.375} y={height * 0.944} width={width * 0.25} height={height * 0.056} stroke="white" strokeWidth={2 * fieldScale} />
                     </>
                 )}
 
                 {/* Titik penalti */}
                 {renderElement(
-                    <Circle radius={3} stroke="white" fill="white" />,
+                    <Circle radius={3 * fieldScale} stroke="white" fill="white" />,
                     penaltySpotLeft.x,
                     penaltySpotLeft.y
                 )}
                 {renderElement(
-                    <Circle radius={3} stroke="white" fill="white" />,
+                    <Circle radius={3 * fieldScale} stroke="white" fill="white" />,
                     penaltySpotRight.x,
                     penaltySpotRight.y
                 )}
@@ -452,47 +649,47 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
                 {orientation === 'horizontal' ? (
                     <>
                         <Arc
-                            x={120}
-                            y={240}
+                            x={width * 0.133}
+                            y={height / 2}
                             innerRadius={0}
-                            outerRadius={50}
+                            outerRadius={50 * fieldScale}
                             angle={180}
                             rotation={-90}
                             stroke="white"
-                            strokeWidth={2 * scale}
+                            strokeWidth={2 * fieldScale}
                         />
                         <Arc
-                            x={780}
-                            y={240}
+                            x={width * 0.867}
+                            y={height / 2}
                             innerRadius={0}
-                            outerRadius={50}
+                            outerRadius={50 * fieldScale}
                             angle={180}
                             rotation={90}
                             stroke="white"
-                            strokeWidth={2 * scale}
+                            strokeWidth={2 * fieldScale}
                         />
                     </>
                 ) : (
                     <>
                         <Arc
-                            x={240}
-                            y={120}
+                            x={width / 2}
+                            y={height * 0.133}
                             innerRadius={0}
-                            outerRadius={50}
+                            outerRadius={50 * fieldScale}
                             angle={180}
                             rotation={0}
                             stroke="white"
-                            strokeWidth={2 * scale}
+                            strokeWidth={2 * fieldScale}
                         />
                         <Arc
-                            x={240}
-                            y={780}
+                            x={width / 2}
+                            y={height * 0.867}
                             innerRadius={0}
-                            outerRadius={50}
+                            outerRadius={50 * fieldScale}
                             angle={180}
                             rotation={180}
                             stroke="white"
-                            strokeWidth={2 * scale}
+                            strokeWidth={2 * fieldScale}
                         />
                     </>
                 )}
@@ -500,7 +697,7 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
                 {/* Busur sudut */}
                 {cornerArcs.map((pos, i) =>
                     renderElement(
-                        <Circle key={i} radius={10} stroke="white" strokeWidth={2 * scale} />,
+                        <Circle key={i} radius={10 * fieldScale} stroke="white" strokeWidth={2 * fieldScale} />,
                         pos.x,
                         pos.y
                     )
@@ -531,29 +728,57 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
         setSelectedTextId(null);
     };
 
-    const handleDrawMouseDown = (e: any) => {
+    const handleDrawMouseDown = (e: KonvaEventObject<MouseEvent | TouchEvent>) => {
         if (drawingMode === null) return;
         isDrawing.current = true;
-        const pos = e.target.getStage().getPointerPosition();
-        setLines([...lines, { drawingMode, points: [pos.x, pos.y], color: selectedColor, strokeWidth: brushSize }]);
+        const stage = e.target?.getStage() as KonvaStage | null;
+        const pos = stage?.getPointerPosition();
+        if (pos) {
+            let x = pos.x;
+            let y = pos.y;
+
+            if (orientation === "vertical") {
+                const logicalX = ((height - y) / height) * 900;
+                const logicalY = (x / width) * 480;
+                x = logicalX;
+                y = logicalY;
+            }
+
+            setLines([...lines, {
+                drawingMode,
+                points: [x, y],
+                color: selectedColor,
+                strokeWidth: brushSize
+            }]);
+        }
     };
 
-    const handleDrawMouseMove = (e: any) => {
+    const handleDrawMouseMove = (e: KonvaEventObject<MouseEvent | TouchEvent>) => {
         if (!isDrawing.current) return;
 
-        const stage = e.target.getStage();
-        const point = stage.getPointerPosition();
+        const stage = e.target?.getStage() as KonvaStage | null;
+        const point = stage?.getPointerPosition();
+        if (!point) return;
+        let x = point.x;
+        let y = point.y;
+
+        if (orientation === "vertical") {
+            const logicalX = ((height - y) / height) * 900;
+            const logicalY = (x / width) * 480;
+            x = logicalX;
+            y = logicalY;
+        }
         const lastLine = lines[lines.length - 1];
 
         if (['arrow', 'line'].includes(lastLine.drawingMode!)) {
             lastLine.points = [
                 lastLine.points[0],
                 lastLine.points[1],
-                point.x,
-                point.y
+                x,
+                y
             ];
         } else {
-            lastLine.points = lastLine.points.concat([point.x, point.y]);
+            lastLine.points = lastLine.points.concat([x, y]);
         }
         setLines([...lines.slice(0, -1), lastLine]);
     };
@@ -571,7 +796,7 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
         }
     };
 
-    const handleCanvasClick = (e: any) => {
+    const handleCanvasClick = (e: KonvaEventObject<Event>) => {
         if (drawingMode !== 'text' || isEditing) return;
 
         if (e.target.getType() === 'Text') {
@@ -583,12 +808,22 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
             }
         }
 
-        const stage = e.target.getStage();
+        const stage = e.target.getStage() as KonvaStage | null;
+        if (!stage) return;
         const pos = stage.getPointerPosition();
+        if (!pos) return;
+        let x = pos.x;
+        let y = pos.y;
+        if (orientation === "vertical") {
+            const logicalX = ((height - y) / height) * 900;
+            const logicalY = (x / width) * 480;
+            x = logicalX;
+            y = logicalY;
+        }
         const newText: TextElement = {
             id: Date.now().toString(),
-            x: pos.x,
-            y: pos.y,
+            x: x,
+            y: y,
             text: 'Click to edit',
             fontSize: 14,
             width: 200,
@@ -656,7 +891,8 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
     }
 
     const handleExportImage = () => {
-        const uri = stageRef.current.toDataURL();
+        const uri = stageRef?.current?.toDataURL();
+        if (!uri) return;
         const link = document.createElement('a');
         link.download = 'result-formation.png';
         link.href = uri;
@@ -667,11 +903,10 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
         mutationKey: ['save-formation'],
         mutationFn: async () => {
             if (!stageRef.current) return;
-            const stageData = stageRef.current.toObject();
+            const stageData = stageRef?.current?.toObject();
             const boardDataWithStates = {
                 stageData,
                 uiStates: {
-                    orientation,
                     showGrid,
                     showNumbers,
                     showOpponents,
@@ -703,14 +938,8 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
             texts: [],
             ballPos: { x: 450, y: 240 }
         });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
-
-    useEffect(() => {
-        if (selectedTextId && trRef.current && textRef.current) {
-            trRef.current.nodes([textRef.current]);
-            trRef.current.getLayer().batchDraw();
-        }
-    }, [selectedTextId, isEditing]);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -730,6 +959,21 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [selectedId, selectedShape, selectedTextId]);
 
+    const handleOrientationChange = (val: string) => {
+        if (val === "horizontal" || val === "vertical") {
+            setOrientation(val);
+        }
+    };
+
+    const handleFormationChange = (val: string) => {
+        if (val in dataFormations) {
+            setSelectedFormation(val as FormationType);
+        }
+    };
+
+    const handleSaveClick = () => {
+        handleSaveFormation();
+    };
 
     if (fetchDataBoardIsLoading) {
         return (
@@ -738,6 +982,29 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
             </div>
         )
     }
+
+    const containerStyles = {
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        position: 'relative' as const,
+        transformOrigin: 'center center',
+        willChange: 'transform',
+        contain: 'layout style paint' as const,
+    };
+
+    const stageContainerStyles = {
+        position: 'relative' as const,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        transformOrigin: 'center center',
+        minWidth: 0,
+        minHeight: 0,
+    };
 
     return (
         <main className="flex h-screen bg-gray-50 overflow-hidden">
@@ -753,23 +1020,20 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
                         <div className="space-y-4">
                             <h1 className="font-bold">Board Settings</h1>
                             <div className="space-y-4">
-                                <div className="space-y-2">
-                                    <h1 className="text-sm text-gray-800 font-semibold">Orientation {`W:${width}, H:${height}`}</h1>
-                                    <Select value={orientation} onValueChange={(val) => setOrientation(val)}>
-                                        <SelectTrigger className="w-full">
-                                            <SelectValue placeholder="Orientation" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectGroup>
-                                                <SelectItem value="horizontal">Horizontal</SelectItem>
-                                                <SelectItem value="vertical">Vertical</SelectItem>
-                                            </SelectGroup>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
+                                <Select value={orientation} onValueChange={handleOrientationChange}>
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Orientation" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectGroup>
+                                            <SelectItem value="horizontal">Horizontal</SelectItem>
+                                            <SelectItem value="vertical">Vertical</SelectItem>
+                                        </SelectGroup>
+                                    </SelectContent>
+                                </Select>
                                 <div className="space-y-2">
                                     <h1 className="text-sm text-gray-800 font-semibold">Formations</h1>
-                                    <Select value={selectedFormation} onValueChange={setSelectedFormation}>
+                                    <Select value={selectedFormation} onValueChange={handleFormationChange}>
                                         <SelectTrigger className="w-full">
                                             <SelectValue placeholder="Formation" />
                                         </SelectTrigger>
@@ -830,7 +1094,7 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
                                 <Button className="w-full cursor-pointer bg-blue-500 hover:bg-blue-600">
-                                    Export Image
+                                    Export to Image
                                 </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
@@ -866,20 +1130,13 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
                 <div className="p-4 flex items-center justify-between border-b border-gray-200 bg-white">
                     <div className="flex items-center gap-2">
                         <h1 className="font-semibold text-lg">{dataBoard?.title || "Tactic Tittle"}</h1>
-                        <div className="flex gap-6">
-                            <h1>Ball: {dataBoard?.boardData?.uiStates.showBall ? "True" : "False"}</h1>
-                            <h1>Grid: {dataBoard?.boardData?.uiStates.showGrid ? "True" : "False"}</h1>
-                            <h1>Numbers: {dataBoard?.boardData?.uiStates.showNumbers ? "True" : "False"}</h1>
-                            <h1>Opponents: {dataBoard?.boardData?.uiStates.showOpponents ? "True" : "False"}</h1>
-                            <h1>Formation: {dataBoard?.boardData?.uiStates.selectedFormation}</h1>
-                        </div>
                         <ModalChangeTitle refetch={refetchDataBoard} tacticId={dataBoard?.id} />
                     </div>
                     <div className="flex items-center gap-4">
                         <Button variant="outline" onClick={handleResetPositions}>
                             Reset Positions
                         </Button>
-                        <Button onClick={handleSaveFormation} disabled={saveFormationIsLoading} className="bg-slate-800 hover:bg-slate-700 cursor-pointer">
+                        <Button onClick={handleSaveClick} disabled={saveFormationIsLoading} className="bg-slate-800 hover:bg-slate-700 cursor-pointer">
                             {saveFormationIsLoading ? (
                                 <>
                                     <LucideLoader2 className="animate-spin" />
@@ -896,262 +1153,419 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
                 </div>
 
                 {/* Canvas Container */}
-                <div className="flex flex-col sm:flex-row gap-2 p-6">
-                    <div ref={containerRef} className="w-full h-full flex-1 flex items-center justify-center overflow-hidden">
-                        <Stage
-                            id="container"
-                            width={width}
-                            height={height}
-                            scaleX={scale}
-                            scaleY={scale}
-                            ref={stageRef}
-                            onClick={(e) => {
-                                if (e.target === e.target.getStage()) {
-                                    setSelectedId(null);
-                                    setSelectedShape(null);
-                                    setSelectedTextId(null);
-                                }
-                                handleCanvasClick(e);
-                            }}
-                            onTap={(e) => {
-                                if (e.target === e.target.getStage()) {
-                                    setSelectedTextId(null);
-                                }
-                                handleCanvasClick(e);
-                            }}
-                            onMouseDown={handleDrawMouseDown}
-                            onMouseMove={handleDrawMouseMove}
-                            onMouseUp={handleDrawMouseUp}
-                            onTouchStart={handleDrawMouseDown}
-                            onTouchMove={handleDrawMouseMove}
-                            onTouchEnd={handleDrawMouseUp}
-                            className="border-4 border-gray-100"
-                            style={{
-                                cursor,
-                                display: "flex",
-                                justifyContent: "center",
-                                alignItems: "center"
-                            }}
-                        >
-                            <Layer>
-                                <Rect
-                                    x={0}
-                                    y={0}
-                                    width={width}
-                                    height={height}
-                                    fill="#388e3c"
-                                    listening={false}
-                                />
-                            </Layer>
-
-                            {showGrid && (
-                                <Layer>
-                                    {Array.from({ length: orientation === 'horizontal' ? 18 : 12 }, (_, i) => (
-                                        <Line
-                                            key={`vertical-${i}`}
-                                            points={orientation === 'horizontal'
-                                                ? [i * 50, 0, i * 50, height]
-                                                : [0, i * 50, width, i * 50]
-                                            }
-                                            stroke="rgba(255, 255, 255, 0.3)"
-                                            strokeWidth={1}
-                                        />
-                                    ))}
-                                    {Array.from({ length: orientation === 'horizontal' ? 12 : 18 }, (_, i) => (
-                                        <Line
-                                            key={`horizontal-${i}`}
-                                            points={orientation === 'horizontal'
-                                                ? [0, i * 50, width, i * 50]
-                                                : [i * 50, 0, i * 50, height]
-                                            }
-                                            stroke="rgba(255, 255, 255, 0.3)"
-                                            strokeWidth={1}
-                                        />
-                                    ))}
-                                </Layer>
-                            )}
-
-                            <Layer>
-                                {renderField()}
-                            </Layer>
-
-                            <Layer>
-                                {/* Our Players */}
-                                {players.map(player => {
-                                    const pos = rotateCoordinates(player.x, player.y);
-                                    return (
-                                        <Group
-                                            key={player.id}
-                                            x={pos.x}
-                                            y={pos.y}
-                                            draggable
-                                            onDragMove={(e) => handleDragPlayer(e, player.id)}
-                                            onMouseOver={() => setCursor("pointer")}
-                                            onMouseOut={() => setCursor("default")}
-                                        >
-                                            <Circle radius={15 * scale} fill={player.color} stroke="white" strokeWidth={2 * scale} />
-                                            {showNumbers && (
-                                                <Text
-                                                    text={String(player.number)}
-                                                    fontSize={16 * scale}
-                                                    fill="white"
-                                                    x={-4 * scale}
-                                                    y={-8 * scale}
-                                                    offsetX={player?.number >= 10 ? 4 * scale : 0}
-                                                    offsetY={0}
-                                                    align="center"
-                                                    verticalAlign="middle"
-                                                />
-                                            )}
-                                        </Group>
-                                    )
-                                })}
-
-                                {/* Opponents */}
-                                {opponents.map(opponent => {
-                                    const pos = rotateCoordinates(opponent.x, opponent.y);
-                                    return (
-                                        <Group
-                                            key={opponent.id}
-                                            x={pos.x}
-                                            y={pos.y}
-                                            draggable
-                                            onDragMove={(e) => handleDragOpponent(e, opponent.id)}
-                                            onMouseOver={() => setCursor("pointer")}
-                                            onMouseOut={() => setCursor("default")}
-                                            visible={showOpponents}
-                                        >
-                                            <Circle
-                                                radius={15 * scale}
-                                                fill={opponent.color}
-                                                stroke="white"
-                                                strokeWidth={2 * scale}
-                                            />
-                                            {showNumbers && (
-                                                <Text
-                                                    text={String(opponent.number)}
-                                                    fontSize={16 * scale}
-                                                    fill="white"
-                                                    x={-4}
-                                                    y={-8}
-                                                    offsetX={opponent?.number >= 10 ? 4 : 0}
-                                                    offsetY={0}
-                                                    align="center"
-                                                    verticalAlign="middle"
-                                                />
-                                            )}
-                                        </Group>
-                                    )
-                                })}
-
-                                {/* Ball */}
-                                {showBall && ballImage && (
-                                    // eslint-disable-next-line jsx-a11y/alt-text
-                                    <Image
-                                        image={ballImage}
-                                        {...rotateCoordinates(ballPos.x, ballPos.y)}
-                                        width={20 * scale}
-                                        height={20 * scale}
-                                        offsetX={15 * scale}
-                                        offsetY={15 * scale}
-                                        draggable
-                                        onMouseOver={() => setCursor("grabbing")}
-                                        onMouseOut={() => setCursor("default")}
-                                        onDragMove={(e) => {
-                                            setBallPos({
-                                                x: e.target.x(),
-                                                y: e.target.y()
-                                            });
-                                        }}
-                                    />
-                                )}
-                            </Layer>
-
-                            <Layer>
-
-                                {lines.map((line, i) => {
-                                    if (line.drawingMode === 'arrow') {
-                                        return (
-                                            <Arrow
-                                                key={i}
-                                                points={line.points}
-                                                stroke={line.color}
-                                                strokeWidth={line.strokeWidth}
-                                                pointerLength={10}
-                                                pointerWidth={10}
-                                                draggable={true}
-                                                onClick={(e) => {
-                                                    e.cancelBubble = true;
-                                                    setSelectedId(String(i));
-                                                    setSelectedShape('arrow');
-                                                }}
-                                                onMouseOver={() => setCursor("grabbing")}
-                                                onMouseOut={() => setCursor("default")}
-                                                shadowColor={selectedId === String(i) ? 'black' : undefined}
-                                            />
-                                        );
+                <div className="flex flex-col sm:flex-row gap-2 h-full p-6 bg-green-400/70">
+                    <div ref={containerRef} className="w-full h-full flex-1 flex items-center justify-center overflow-hidden" style={containerStyles}>
+                        <div style={stageContainerStyles}>
+                            <Stage
+                                id="container"
+                                width={width}
+                                height={height}
+                                ref={stageRef}
+                                scaleX={1}
+                                scaleY={1}
+                                onClick={(e) => {
+                                    if (e.target === e.target.getStage()) {
+                                        setSelectedId(null);
+                                        setSelectedShape(null);
+                                        setSelectedTextId(null);
                                     }
+                                    handleCanvasClick(e);
+                                }}
+                                onTap={(e) => {
+                                    if (e.target === e.target.getStage()) {
+                                        setSelectedTextId(null);
+                                    }
+                                    handleCanvasClick(e);
+                                }}
+                                onMouseDown={handleDrawMouseDown}
+                                onMouseMove={handleDrawMouseMove}
+                                onMouseUp={handleDrawMouseUp}
+                                onTouchStart={handleDrawMouseDown}
+                                onTouchMove={handleDrawMouseMove}
+                                onTouchEnd={handleDrawMouseUp}
+                                className="border-4 border-gray-100"
+                                style={{
+                                    cursor,
+                                    maxWidth: '100%',
+                                    maxHeight: '100%',
+                                    transformOrigin: 'center center',
+                                    objectFit: 'contain',
+                                    flexShrink: 0,
+                                }}
+                            >
+                                <Layer>
+                                    <Rect
+                                        x={0}
+                                        y={0}
+                                        width={width}
+                                        height={height}
+                                        fill="#388e3c"
+                                        listening={false}
+                                    />
+                                </Layer>
 
-                                    if (line.drawingMode === 'line') {
+                                {showGrid && (
+                                    <Layer>
+                                        {/* Grid lines berdasarkan orientasi */}
+                                        {orientation === 'horizontal' ? (
+                                            <>
+                                                {/* Vertical lines */}
+                                                {Array.from({ length: Math.floor(width / 50) + 1 }, (_, i) => (
+                                                    <Line
+                                                        key={`vertical-${i}`}
+                                                        points={[i * 50, 0, i * 50, height]}
+                                                        stroke="rgba(255, 255, 255, 0.3)"
+                                                        strokeWidth={1}
+                                                    />
+                                                ))}
+                                                {/* Horizontal lines */}
+                                                {Array.from({ length: Math.floor(height / 50) + 1 }, (_, i) => (
+                                                    <Line
+                                                        key={`horizontal-${i}`}
+                                                        points={[0, i * 50, width, i * 50]}
+                                                        stroke="rgba(255, 255, 255, 0.3)"
+                                                        strokeWidth={1}
+                                                    />
+                                                ))}
+                                            </>
+                                        ) : (
+                                            <>
+                                                {/* Vertical lines untuk vertical orientation */}
+                                                {Array.from({ length: Math.floor(width / 50) + 1 }, (_, i) => (
+                                                    <Line
+                                                        key={`vertical-${i}`}
+                                                        points={[i * 50, 0, i * 50, height]}
+                                                        stroke="rgba(255, 255, 255, 0.3)"
+                                                        strokeWidth={1}
+                                                    />
+                                                ))}
+                                                {/* Horizontal lines untuk vertical orientation */}
+                                                {Array.from({ length: Math.floor(height / 50) + 1 }, (_, i) => (
+                                                    <Line
+                                                        key={`horizontal-${i}`}
+                                                        points={[0, i * 50, width, i * 50]}
+                                                        stroke="rgba(255, 255, 255, 0.3)"
+                                                        strokeWidth={1}
+                                                    />
+                                                ))}
+                                            </>
+                                        )}
+                                    </Layer>
+                                )}
+
+                                <Layer>
+                                    {renderField()}
+                                </Layer>
+
+                                <Layer>
+                                    {/* Our Players */}
+                                    {players.map(player => {
+                                        const pos = rotateCoordinates(player.x, player.y);
+                                        return (
+                                            <Group
+                                                key={player.id}
+                                                x={pos.x}
+                                                y={pos.y}
+                                                draggable
+                                                onDragMove={(e) => handleDragPlayer(e, player.id)}
+                                                onMouseOver={() => setCursor("pointer")}
+                                                onMouseOut={() => setCursor("default")}
+                                            >
+                                                <Circle radius={15 * scale} fill={player.color} stroke="white" strokeWidth={2 * scale} />
+                                                {showNumbers && (
+                                                    <Text
+                                                        text={String(player.number)}
+                                                        fontSize={16 * scale}
+                                                        fill="white"
+                                                        x={-4 * scale}
+                                                        y={-8 * scale}
+                                                        offsetX={(player?.number || 0) >= 10 ? 4 * scale : 0}
+                                                        offsetY={0}
+                                                        align="center"
+                                                        verticalAlign="middle"
+                                                    />
+                                                )}
+                                            </Group>
+                                        )
+                                    })}
+
+                                    {/* Opponents */}
+                                    {opponents.map(opponent => {
+                                        const pos = rotateCoordinates(opponent.x, opponent.y);
+                                        return (
+                                            <Group
+                                                key={opponent.id}
+                                                x={pos.x}
+                                                y={pos.y}
+                                                draggable
+                                                onDragMove={(e) => handleDragOpponent(e, opponent.id)}
+                                                onMouseOver={() => setCursor("pointer")}
+                                                onMouseOut={() => setCursor("default")}
+                                                visible={showOpponents}
+                                            >
+                                                <Circle
+                                                    radius={15 * scale}
+                                                    fill={opponent.color}
+                                                    stroke="white"
+                                                    strokeWidth={2 * scale}
+                                                />
+                                                {showNumbers && (
+                                                    <Text
+                                                        text={String(opponent.number)}
+                                                        fontSize={16 * scale}
+                                                        fill="white"
+                                                        x={-4 * scale}
+                                                        y={-8 * scale}
+                                                        offsetX={(opponent?.number || 0) >= 10 ? 4 * scale : 0}
+                                                        offsetY={0}
+                                                        align="center"
+                                                        verticalAlign="middle"
+                                                    />
+                                                )}
+                                            </Group>
+                                        )
+                                    })}
+
+                                    {/* Ball */}
+                                    {showBall && ballImage && (
+                                        // eslint-disable-next-line jsx-a11y/alt-text
+                                        <Image
+                                            image={ballImage}
+                                            {...rotateCoordinates(ballPos.x, ballPos.y)}
+                                            width={20 * scale}
+                                            height={20 * scale}
+                                            offsetX={15 * scale}
+                                            offsetY={15 * scale}
+                                            draggable
+                                            onMouseOver={() => setCursor("grabbing")}
+                                            onMouseOut={() => setCursor("default")}
+                                            onDragMove={(e) => {
+                                                const pos = e.target.position();
+                                                setBallPos({
+                                                    x: pos.x || 450,
+                                                    y: pos.y || 240
+                                                });
+                                            }}
+                                        />
+                                    )}
+                                </Layer>
+
+                                <Layer>
+
+                                    {lines.map((line, i) => {
+                                        const displayPoints = rotateLinePoints(line.points, width, height);
+                                        if (line.drawingMode === 'arrow') {
+                                            return (
+                                                <Arrow
+                                                    key={i}
+                                                    points={displayPoints}
+                                                    stroke={line.color}
+                                                    strokeWidth={line.strokeWidth}
+                                                    pointerLength={10}
+                                                    pointerWidth={10}
+                                                    draggable={true}
+                                                    onClick={(e) => {
+                                                        e.cancelBubble = true;
+                                                        setSelectedId(String(i));
+                                                        setSelectedShape('arrow');
+                                                    }}
+                                                    onMouseOver={() => setCursor("grabbing")}
+                                                    onMouseOut={() => setCursor("default")}
+                                                    shadowColor={selectedId === String(i) ? 'black' : undefined}
+                                                    onDragStart={(e) => {
+                                                        const startPos = e.target.position();
+                                                        setDragOffset(prev => ({
+                                                            ...prev,
+                                                            [`arrow-${i}`]: { x: startPos.x, y: startPos.y }
+                                                        }));
+                                                    }}
+                                                    onDragMove={(e) => {
+                                                        const currentPos = e.target.position();
+                                                        const offset = dragOffset[`arrow-${i}`] || { x: 0, y: 0 };
+
+                                                        const deltaX = currentPos.x - offset.x;
+                                                        const deltaY = currentPos.y - offset.y;
+
+                                                        const logicalDelta = convertDragCoordinates(deltaX, deltaY);
+                                                        const originalLogicalDelta = convertDragCoordinates(0, 0);
+
+                                                        const finalDeltaX = logicalDelta.x - originalLogicalDelta.x;
+                                                        const finalDeltaY = logicalDelta.y - originalLogicalDelta.y;
+
+                                                        const newPoints = [];
+                                                        for (let j = 0; j < line.points.length; j += 2) {
+                                                            newPoints.push(line.points[j] + finalDeltaX);
+                                                            newPoints.push(line.points[j + 1] + finalDeltaY);
+                                                        }
+
+                                                        const updatedLines = [...lines];
+                                                        updatedLines[i] = { ...updatedLines[i], points: newPoints };
+                                                        setLines(updatedLines);
+
+                                                        setDragOffset(prev => ({
+                                                            ...prev,
+                                                            [`arrow-${i}`]: { x: currentPos.x, y: currentPos.y }
+                                                        }));
+                                                    }}
+                                                    onDragEnd={(e) => {
+                                                        e.target.position({ x: 0, y: 0 });
+                                                        setDragOffset(prev => {
+                                                            const newOffset = { ...prev };
+                                                            delete newOffset[`arrow-${i}`];
+                                                            return newOffset;
+                                                        });
+
+                                                        saveToHistory({
+                                                            players,
+                                                            opponents,
+                                                            lines,
+                                                            texts,
+                                                            ballPos
+                                                        });
+                                                    }}
+                                                />
+                                            );
+                                        }
+
+                                        if (line.drawingMode === 'line') {
+                                            return (
+                                                <Line
+                                                    key={i}
+                                                    points={displayPoints}
+                                                    stroke={line.color}
+                                                    strokeWidth={line.strokeWidth}
+                                                    lineCap="round"
+                                                    lineJoin="round"
+                                                    draggable={true}
+                                                    onClick={(e) => {
+                                                        e.cancelBubble = true;
+                                                        setSelectedId(String(i));
+                                                        setSelectedShape('line');
+                                                    }}
+                                                    onMouseOver={() => setCursor("grabbing")}
+                                                    onMouseOut={() => setCursor("default")}
+                                                    onDragStart={(e) => {
+                                                        const startPos = e.target.position();
+                                                        setDragOffset(prev => ({
+                                                            ...prev,
+                                                            [`line-${i}`]: { x: startPos.x, y: startPos.y }
+                                                        }));
+                                                    }}
+                                                    onDragMove={(e) => {
+                                                        const currentPos = e.target.position();
+                                                        const offset = dragOffset[`line-${i}`] || { x: 0, y: 0 };
+
+                                                        const deltaX = currentPos.x - offset.x;
+                                                        const deltaY = currentPos.y - offset.y;
+
+                                                        // Untuk orientasi horizontal, delta tidak perlu dikonversi
+                                                        let finalDeltaX = deltaX;
+                                                        let finalDeltaY = deltaY;
+
+                                                        // Untuk orientasi vertical, konversi delta
+                                                        if (orientation === "vertical") {
+                                                            finalDeltaX = -deltaY * (900 / height);
+                                                            finalDeltaY = deltaX * (480 / width);
+                                                        }
+
+                                                        const newPoints = [];
+                                                        for (let j = 0; j < line.points.length; j += 2) {
+                                                            newPoints.push(line.points[j] + finalDeltaX);
+                                                            newPoints.push(line.points[j + 1] + finalDeltaY);
+                                                        }
+
+                                                        const updatedLines = [...lines];
+                                                        updatedLines[i] = { ...updatedLines[i], points: newPoints };
+                                                        setLines(updatedLines);
+
+                                                        setDragOffset(prev => ({
+                                                            ...prev,
+                                                            [`line-${i}`]: { x: currentPos.x, y: currentPos.y }
+                                                        }));
+                                                    }}
+                                                    onDragEnd={(e) => {
+                                                        e.target.position({ x: 0, y: 0 });
+                                                        setDragOffset(prev => {
+                                                            const newOffset = { ...prev };
+                                                            delete newOffset[`line-${i}`];
+                                                            return newOffset;
+                                                        });
+
+                                                        saveToHistory({
+                                                            players,
+                                                            opponents,
+                                                            lines,
+                                                            texts,
+                                                            ballPos
+                                                        });
+                                                    }}
+                                                />
+                                            );
+                                        }
                                         return (
                                             <Line
                                                 key={i}
-                                                points={line.points}
+                                                points={displayPoints}
                                                 stroke={line.color}
                                                 strokeWidth={line.strokeWidth}
+                                                tension={0.5}
                                                 lineCap="round"
                                                 lineJoin="round"
-                                                draggable={true}
-                                                onClick={(e) => {
-                                                    e.cancelBubble = true;
-                                                    setSelectedId(String(i));
-                                                    setSelectedShape('line');
-                                                }}
-                                                onMouseOver={() => setCursor("grabbing")}
-                                                onMouseOut={() => setCursor("default")}
+                                                globalCompositeOperation={
+                                                    line.drawingMode === "eraser" ? 'destination-out' : 'source-over'
+                                                }
                                             />
-                                        );
-                                    }
-                                    return (
-                                        <Line
-                                            key={i}
-                                            points={line.points}
-                                            stroke={line.color}
-                                            strokeWidth={line.strokeWidth}
-                                            tension={0.5}
-                                            lineCap="round"
-                                            lineJoin="round"
-                                            globalCompositeOperation={
-                                                line.drawingMode === "eraser" ? 'destination-out' : 'source-over'
-                                            }
-                                        />
-                                    )
-                                })}
-                            </Layer>
+                                        )
+                                    })}
+                                </Layer>
 
-                            <Layer>
-                                {texts.map((text) => (
-                                    <EditableText
-                                        key={text.id}
-                                        text={text}
-                                        isSelected={selectedTextId === text.id}
-                                        onSelect={setSelectedTextId}
-                                        setSelectedShape={setSelectedShape}
-                                        onChange={(id, newText, newPos) => {
-                                            setTexts(texts.map(t =>
-                                                t.id === id
-                                                    ? {
-                                                        ...t,
-                                                        text: newText,
-                                                        ...(newPos && { x: newPos.x, y: newPos.y })
-                                                    }
-                                                    : t
-                                            ));
-                                        }}
-                                    />
-                                ))}
-                            </Layer>
-                        </Stage>
+                                <Layer>
+                                    {texts.map((text) => {
+                                        const displayPos = rotateTextCoordinates(text.x, text.y, width, height);
+
+                                        return (
+                                            <EditableText
+                                                key={text.id}
+                                                text={{
+                                                    ...text,
+                                                    x: displayPos.x,
+                                                    y: displayPos.y
+                                                }}
+                                                isSelected={selectedTextId === text.id}
+                                                onSelect={setSelectedTextId}
+                                                setSelectedShape={setSelectedShape}
+                                                onChange={(id: string, newText: string, newPos: TextPosition | undefined) => {
+                                                    setTexts(texts.map(t => {
+                                                        if (t.id === id) {
+                                                            let updatedText = { ...t, text: newText };
+
+                                                            if (newPos) {
+                                                                let logicalX = newPos.x;
+                                                                let logicalY = newPos.y;
+
+                                                                if (orientation === "vertical") {
+                                                                    logicalX = ((height - newPos.y) / height) * 900;
+                                                                    logicalY = (newPos.x / width) * 480;
+                                                                }
+
+                                                                updatedText = {
+                                                                    ...updatedText,
+                                                                    x: logicalX,
+                                                                    y: logicalY
+                                                                };
+                                                            }
+
+                                                            return updatedText;
+                                                        }
+                                                        return t;
+                                                    }));
+                                                }}
+                                            />
+                                        )
+                                    })}
+                                </Layer>
+                            </Stage>
+                        </div>
                     </div>
 
                     <div className="flex flex-row md:flex-col gap-2

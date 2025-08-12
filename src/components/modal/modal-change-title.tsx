@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 
-export default function ModalChangeTitle({ refetch, tacticId }: any) {
+export default function ModalChangeTitle({ refetch, tacticId }: { refetch: () => void; tacticId: string | undefined }) {
     const pathname = usePathname();
     const [modalIsOpen, setModalIsOpen] = useState<boolean>(false);
 
@@ -51,7 +51,6 @@ export default function ModalChangeTitle({ refetch, tacticId }: any) {
 
     function onSubmit(values: z.infer<typeof formSchema>) {
         handleChangeTitle(values);
-        console.log(values);
     }
 
     return (

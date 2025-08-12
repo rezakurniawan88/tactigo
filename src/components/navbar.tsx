@@ -9,9 +9,9 @@ import { signOut } from "next-auth/react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "./ui/alert-dialog";
 import { useState } from "react";
 import useModalStore from "@/stores/useModalStore";
+import type { Session } from "next-auth";
 
-export default function Navbar({ session }: any) {
-    console.log("session", session);
+export default function Navbar({ session }: { session: Session | null }) {
     const acronymUser = session?.user?.name?.split(/\s+/g).slice(0, 2).map((word: string | number[]) => word[0]).join('').toUpperCase();
     const [logoutIsLoading, setLogoutIsLoading] = useState<boolean>(false);
     const { setModalCreateTacticIsOpen } = useModalStore((state) => state);

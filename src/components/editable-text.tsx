@@ -1,16 +1,44 @@
 import { useEffect, useRef, useState } from "react";
 import { Text, Transformer } from "react-konva";
 import { Html } from "react-konva-utils";
+import Konva from "konva";
 
-const EditableText = ({ text, isSelected, setSelectedShape, onChange, onSelect }) => {
-    const textRef = useRef(null);
-    const transformerRef = useRef(null);
+interface TextElement {
+    id: string;
+    x: number;
+    y: number;
+    width: number;
+    rotation: number;
+    text: string;
+    fontSize: number;
+    isEditing: boolean;
+    draggable: boolean;
+}
+
+interface TextPosition {
+    x: number;
+    y: number;
+    width?: number;
+    rotation?: number;
+}
+
+interface EditableTextProps {
+    text: TextElement;
+    isSelected: boolean;
+    setSelectedShape: React.Dispatch<React.SetStateAction<"text" | "line" | "arrow" | null>>;
+    onChange: (id: string, newText: string, newPos?: TextPosition) => void;
+    onSelect: React.Dispatch<React.SetStateAction<string | null>>;
+}
+
+const EditableText = ({ text, isSelected, setSelectedShape, onChange, onSelect }: EditableTextProps) => {
+    const textRef = useRef<Konva.Text>(null);
+    const transformerRef = useRef<Konva.Transformer>(null);
     const [isEditing, setIsEditing] = useState<boolean>(false);
 
     useEffect(() => {
         if (isSelected && transformerRef.current && textRef.current) {
             transformerRef.current.nodes([textRef.current]);
-            transformerRef.current.getLayer().batchDraw();
+            transformerRef.current.getLayer()?.batchDraw();
         }
     }, [isSelected]);
 
@@ -18,18 +46,20 @@ const EditableText = ({ text, isSelected, setSelectedShape, onChange, onSelect }
         setIsEditing(true);
     };
 
-    const handleTextChange = (e) => {
+    const handleTextChange = (e: React.FocusEvent<HTMLInputElement> | React.KeyboardEvent<HTMLInputElement>) => {
         const node = textRef.current;
-        onChange(text.id, e.target.value, {
-            x: node.x(),
-            y: node.y(),
-            width: node.width() * node.scaleX(),
-            rotation: node.rotation()
-        });
+        if (node) {
+            onChange(text.id, (e.target as HTMLInputElement).value, {
+                x: node.x(),
+                y: node.y(),
+                width: node.width() * node.scaleX(),
+                rotation: node.rotation()
+            });
+        }
         setIsEditing(false);
     };
 
-    const handleTextClick = (e) => {
+    const handleTextClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
         e.cancelBubble = true;
         onSelect(text.id);
         setSelectedShape("text");
@@ -55,12 +85,14 @@ const EditableText = ({ text, isSelected, setSelectedShape, onChange, onSelect }
                 }}
                 onTransform={() => {
                     const node = textRef.current;
-                    onChange(text.id, text.text, {
-                        x: node.x(),
-                        y: node.y(),
-                        width: node.width() * node.scaleX(),
-                        rotation: node.rotation()
-                    });
+                    if (node) {
+                        onChange(text.id, text.text, {
+                            x: node.x(),
+                            y: node.y(),
+                            width: node.width() * node.scaleX(),
+                            rotation: node.rotation()
+                        });
+                    }
                 }}
             />
             {isSelected && (

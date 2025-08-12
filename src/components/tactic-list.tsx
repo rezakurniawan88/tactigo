@@ -14,9 +14,51 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import ModalChangeTitle from "./modal/modal-change-title";
 import PreviewBoard from "./preview-board";
 
+type BoardDataType = {
+  uiStates: {
+    showOpponents: boolean;
+    showGrid: boolean;
+  };
+  stageData: {
+    children: Array<{
+      className: string;
+      children: Array<PlayerGroupType>;
+    }>;
+  };
+}
+
+type PlayerGroupType = {
+  className: string;
+  attrs?: {
+    x?: number;
+    y?: number;
+    [key: string]: unknown;
+  };
+  children: Array<{
+    attrs: {
+      fill: string;
+      [key: string]: unknown;
+    };
+  }>;
+};
+
+type TacticType = {
+  id: string;
+  title: string;
+  description: string;
+  boardType: string;
+  boardData: BoardDataType;
+  isPublic: boolean,
+  isArchived: boolean,
+  createdAt: string;
+  updatedAt: string;
+  userId: string;
+}
+
 export default function TacticList() {
   const session = useSession();
   const [layoutView, setLayoutView] = useState<"grid" | "list">("grid");
+  const [alertDialogOpen, setAlertDialogOpen] = useState<boolean>(false);
 
   const handleLayoutChange = (view: "grid" | "list") => {
     setLayoutView(view);
@@ -31,8 +73,6 @@ export default function TacticList() {
     enabled: !!session?.data?.user?.id
   })
 
-  console.log("dataTactics", dataTactics);
-
   const { mutate: handleDeleteTactic, isPending: deleteTacticIsLoading } = useMutation({
     mutationKey: ['delete-tactic'],
     mutationFn: async (tacticId: string) => {
@@ -42,6 +82,7 @@ export default function TacticList() {
     onSuccess: (msg) => {
       toast(msg);
       refetchDataTactics();
+      setAlertDialogOpen(false);
     },
     onError: (error) => {
       toast("Failed to delete tactic. Please try again.");
@@ -85,7 +126,7 @@ export default function TacticList() {
               </div>
             ))}
           </>
-        ) : dataTactics?.map((tactic) => (
+        ) : dataTactics?.map((tactic: TacticType) => (
           <div key={tactic.id} className="relative">
             <Link href={`/tactic/${tactic.id}`}>
               <div className="bg-white rounded-xl overflow-hidden hover:shadow-xl transition-all hover:shadow-slate-200 border border-slate-200">
@@ -123,9 +164,9 @@ export default function TacticList() {
               <PopoverContent className="w-32 mt-1 mr-24 p-1">
                 <div className="space-y-1">
                   <ModalChangeTitle refetch={refetchDataTactics} tacticId={tactic.id} />
-                  <AlertDialog>
+                  <AlertDialog open={alertDialogOpen} onOpenChange={setAlertDialogOpen}>
                     <AlertDialogTrigger asChild>
-                      <div className="w-full flex items-center gap-2 text-xs p-2 text-red-600 hover:text-red-800 transition-colors rounded-md hover:bg-gray-100">
+                      <div className="w-full flex items-center gap-2 text-xs p-2 text-red-600 hover:text-red-800 transition-colors rounded-md hover:bg-gray-100 cursor-pointer">
                         <LucideTrash className="w-3 h-3 text-red-600" />
                         <h1 className="text-red-600">Delete</h1>
                       </div>

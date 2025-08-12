@@ -2,8 +2,36 @@
 
 import { Circle, Group, Layer, Line, Rect, Stage } from "react-konva";
 
+type BoardDataType = {
+    uiStates: {
+        showOpponents: boolean;
+        showGrid: boolean;
+    };
+    stageData: {
+        children: Array<{
+            className: string;
+            children: Array<PlayerGroupType>;
+        }>;
+    };
+}
+
+type PlayerGroupType = {
+    className: string;
+    attrs?: {
+        x?: number;
+        y?: number;
+        [key: string]: unknown;
+    };
+    children: Array<{
+        attrs: {
+            fill: string;
+            [key: string]: unknown;
+        };
+    }>;
+};
+
 interface PreviewBoardProps {
-    boardData: any;
+    boardData: BoardDataType;
     width?: number;
     height?: number;
 }
@@ -15,8 +43,8 @@ export default function PreviewBoard({ boardData, width = 200, height = 120 }: P
         const { stageData, uiStates } = boardData || {};
         const { showOpponents = false, showGrid = false } = uiStates || {};
 
-        const playerLayer = showGrid ? stageData?.children?.[3]?.children || [] : stageData?.children?.[2]?.children || [];
-        const players = playerLayer.filter((group: any) =>
+        const playerLayer: PlayerGroupType[] = showGrid ? stageData?.children?.[3]?.children || [] : stageData?.children?.[2]?.children || [];
+        const players: PlayerGroupType[] = playerLayer.filter((group: PlayerGroupType) =>
             group?.className === "Group" &&
             (group?.children?.[0]?.attrs?.fill === "#2196F3" ||
                 (showOpponents && group?.children?.[0]?.attrs?.fill === "#F44336"))
@@ -67,7 +95,7 @@ export default function PreviewBoard({ boardData, width = 200, height = 120 }: P
 
                 {/* Players */}
                 <Layer>
-                    {players.map((group: any, i: number) => (
+                    {players.map((group: PlayerGroupType, i: number) => (
                         <Group
                             key={i}
                             x={group.attrs?.x}

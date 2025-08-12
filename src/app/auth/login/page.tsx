@@ -56,7 +56,6 @@ export default function LoginPage() {
 
     function onSubmit(values: z.infer<typeof formSchema>) {
         handleLogin(values);
-        console.log(values);
     }
 
     return (
@@ -64,7 +63,7 @@ export default function LoginPage() {
             <div className="hidden lg:flex w-1/2 bg-emerald-50 justify-center items-center p-12">
                 <div className="max-w-lg">
                     <h2 className="text-4xl font-bold text-emerald-800 mb-6">Welcome to TactiGo</h2>
-                    <p className="text-emerald-600 text-lg">Your ultimate platform for strategic planning and execution.</p>
+                    <p className="text-emerald-600 text-lg">Your ultimate platform for create strategic sport board</p>
                 </div>
             </div>
 
@@ -124,7 +123,7 @@ export default function LoginPage() {
                                     />
                                     <label htmlFor="remember_me" className="text-sm text-gray-600">Remember me</label>
                                 </div>
-                                <Link href="/forgot-password" className="text-sm text-emerald-600 hover:text-emerald-800 transition-colors">Forgot password?</Link>
+                                <Link href="#" className="text-sm text-emerald-600 hover:text-emerald-800 transition-colors">Forgot password?</Link>
                             </div>
 
                             <Button type="submit" className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors duration-200 font-medium">{loginIsLoading ? <LucideLoader2 className="animate-spin" /> : "Log in"}</Button>

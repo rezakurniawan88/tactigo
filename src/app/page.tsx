@@ -1,11 +1,12 @@
 import Navbar from '@/components/navbar';
 import { getServerSession } from 'next-auth';
+import type { Session } from "next-auth";
 import { authOptions } from '@/lib/auth';
 import TacticList from '@/components/tactic-list';
 import { redirect } from 'next/navigation';
 
 export default async function Home() {
-  const session = await getServerSession(authOptions);
+  const session: Session | null = await getServerSession(authOptions);
 
   if (!session) {
     redirect('/auth/login')

@@ -1,4 +1,4 @@
-const ColorPicker = ({ selectedColor, setSelectedColor }: { selectedColor: string, setSelectedColor: any }) => {
+const ColorPicker = ({ selectedColor, setSelectedColor }: { selectedColor: string, setSelectedColor: React.Dispatch<React.SetStateAction<string>> }) => {
 
     const colors = [
         { value: 'red', name: 'Red' },

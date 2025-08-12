@@ -24,7 +24,6 @@ export default function SearchBar() {
 
     function onSubmit(values: z.infer<typeof formSchema>) {
         route.push(`/search?q=${values.searchValue}`)
-        console.log(values);
     }
 
     return (
