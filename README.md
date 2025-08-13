@@ -34,10 +34,8 @@ Tactigo is a modern tactical board application designed for and sports enthusias
 - **Shadcn UI** - Modern UI components
 - **Konva.js** - Canvas drawing library
 - **Next Auth** - Authentication solution
-
-### Library Tambahan
-- Zustand - State management
-- Tailwind CSS - Styling
+- **Zustand** - State management
+- **Tailwind CSS** - Styling
 
 ## Getting Started
 
